@@ -9,9 +9,26 @@ type QuizRow = {
   choices: string[] | null;
   correct_index: number | null;
   correct_bool: boolean | null;
-  explanation: string;
+  explanation: string | null;
   order_index: number;
 };
+
+type QuizQuestion =
+  | {
+      id: string;
+      type: "mcq";
+      question: string;
+      choices: string[];
+      correctIndex: number;
+      explanation?: string;
+    }
+  | {
+      id: string;
+      type: "tf";
+      question: string;
+      correctBool: boolean;
+      explanation?: string;
+    };
 
 export default async function LessonPage({
   params,
@@ -21,23 +38,23 @@ export default async function LessonPage({
   const { courseId, unitId, lessonId } = await params;
   const supabase = supabaseServer();
 
-  // تأكد الوحدة تبع الكورس
-  const { data: unit } = await supabase
+  // تأكد إن الوحدة تبع الكورس
+  const { data: unit, error: unitErr } = await supabase
     .from("units")
     .select("id, course_id")
     .eq("id", unitId)
     .single();
 
-  if (!unit || unit.course_id !== courseId) notFound();
+  if (unitErr || !unit || unit.course_id !== courseId) notFound();
 
-  // هات كل دروس الوحدة مرتبة (للسابق/التالي)
-  const { data: lessons } = await supabase
+  // هات دروس الوحدة مرتبة عشان prev/next
+  const { data: lessons, error: lessonsErr } = await supabase
     .from("lessons")
     .select("id, title, youtube_id, summary, key_points, order")
     .eq("unit_id", unitId)
     .order("order", { ascending: true });
 
-  if (!lessons) notFound();
+  if (lessonsErr || !lessons) notFound();
 
   const idx = lessons.findIndex((l) => l.id === lessonId);
   if (idx === -1) notFound();
@@ -50,21 +67,35 @@ export default async function LessonPage({
   const nextHref = next ? `/course/${courseId}/unit/${unitId}/lesson/${next.id}` : null;
 
   // هات أسئلة الدرس
-  const { data: quizRows } = await supabase
+  const { data: quizRows, error: quizErr } = await supabase
     .from("quiz_questions")
     .select("id,qtype,question,choices,correct_index,correct_bool,explanation,order_index")
     .eq("lesson_id", lessonId)
     .order("order_index", { ascending: true });
 
-  const quiz = (quizRows as QuizRow[] | null)?.map((q) => ({
-    id: q.id,
-    type: q.qtype,
-    question: q.question,
-    choices: q.choices ?? undefined,
-    correctIndex: q.correct_index ?? undefined,
-    correctBool: q.correct_bool ?? undefined,
-    explanation: q.explanation ?? "",
-  })) ?? [];
+  if (quizErr) notFound();
+
+  // ✅ أهم جزء: تحويل الأسئلة لِـUnion صحيح (mcq vs tf)
+  const quiz: QuizQuestion[] = (quizRows as QuizRow[] | null)?.map((q) => {
+    if (q.qtype === "mcq") {
+      return {
+        id: q.id,
+        type: "mcq",
+        question: q.question,
+        choices: q.choices ?? [],
+        correctIndex: q.correct_index ?? 0,
+        explanation: q.explanation ?? "",
+      };
+    }
+
+    return {
+      id: q.id,
+      type: "tf",
+      question: q.question,
+      correctBool: q.correct_bool ?? false,
+      explanation: q.explanation ?? "",
+    };
+  }) ?? [];
 
   return (
     <LessonClient
