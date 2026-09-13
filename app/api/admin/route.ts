@@ -1,41 +1,32 @@
-import { createClient as createUserClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { createClient as createUserClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
-  const supabase = supabaseAdmin();
+  // 1. التحقق من أمان الجلسة وإيميل الأدمن
+  const userClient = await createUserClient();
+  const { data } = await userClient.auth.getUser();
+  const user = data.user;
 
-  const body = await req.json();
-  const { adminPassword, action, payload } = body as {
-    adminPassword?: string;
-    action: string;
-    payload: any;
-  };
+  const allowed = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
 
-  // ✅ تحقق إن المستخدم عامل Login وإن إيميله Admin
-const userClient = await createUserClient();
-const { data } = await userClient.auth.getUser();
-const user = data.user;
-
-const allowed = (process.env.ADMIN_EMAILS ?? "")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
-
-if (!user) {
-  return NextResponse.json({ ok: false, error: "Not logged in" }, { status: 401 });
-}
-
-if (!allowed.includes((user.email ?? "").toLowerCase())) {
-  return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
-}
-
-  if (!adminPassword || adminPassword !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "يجب تسجيل الدخول أولاً" }, { status: 401 });
   }
 
+  if (!allowed.includes((user.email ?? "").toLowerCase())) {
+    return NextResponse.json({ ok: false, error: "عذرًا، هذا الإيميل ليس لديه صلاحيات أدمن" }, { status: 403 });
+  }
+
+  // 2. تنفيذ الأوامر بحساب الأدمن
+  const supabase = supabaseAdmin();
+  const body = await req.json();
+  const { action, payload } = body as { action: string; payload: any };
+
   try {
-    // ---------- Grades ----------
     if (action === "upsert_grade") {
       const { slug, name, order_index } = payload;
       const { data, error } = await supabase
@@ -56,7 +47,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
 
     if (action === "delete_grade_force") {
       const { slug } = payload;
-
       const { count: coursesDeleted, error: delCoursesErr } = await supabase
         .from("courses")
         .delete({ count: "exact" })
@@ -69,7 +59,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data: { deleted: true, coursesDeleted: coursesDeleted ?? 0 } });
     }
 
-    // ---------- Tracks ----------
     if (action === "upsert_track") {
       const { slug, name, description, order_index } = payload;
       const { data, error } = await supabase
@@ -93,7 +82,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
 
     if (action === "delete_track_force") {
       const { slug } = payload;
-
       const { count: coursesDeleted, error: delCoursesErr } = await supabase
         .from("courses")
         .delete({ count: "exact" })
@@ -106,10 +94,8 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data: { deleted: true, coursesDeleted: coursesDeleted ?? 0 } });
     }
 
-    // ---------- Courses ----------
     if (action === "create_course") {
       const { course_type, grade_slug, track_slug, title, subject } = payload;
-
       const row =
         course_type === "track"
           ? { course_type: "track", grade: null, track_slug, title, subject }
@@ -153,7 +139,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
-    // ---------- Term book ----------
     if (action === "set_term_book") {
       const { course_id, term, book_pdf_url } = payload;
       const { data, error } = await supabase
@@ -165,7 +150,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data });
     }
 
-    // ---------- Units ----------
     if (action === "create_unit") {
       const { course_id, term, order, title } = payload;
       const { data, error } = await supabase
@@ -189,7 +173,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data });
     }
 
-    // ↑↓ للوحدات (swap)
     if (action === "move_unit") {
       const { unit_id, direction } = payload as { unit_id: string; direction: -1 | 1 };
 
@@ -216,8 +199,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       if (!neighbor) return NextResponse.json({ ok: true, data: { moved: false } });
 
       const temp = -1000000;
-
-      // swap safely
       await supabase.from("units").update({ order: temp }).eq("id", neighbor.id);
       await supabase.from("units").update({ order: neighbor.order }).eq("id", unit.id);
       await supabase.from("units").update({ order: unit.order }).eq("id", neighbor.id);
@@ -232,7 +213,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
-    // ---------- Lessons ----------
     if (action === "create_lesson") {
       const { unit_id, order, title, youtube_id, summary, key_points } = payload;
 
@@ -273,7 +253,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data });
     }
 
-    // ↑↓ للدروس داخل نفس الوحدة
     if (action === "move_lesson") {
       const { lesson_id, direction } = payload as { lesson_id: string; direction: -1 | 1 };
 
@@ -299,7 +278,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       if (!neighbor) return NextResponse.json({ ok: true, data: { moved: false } });
 
       const temp = -1000000;
-
       await supabase.from("lessons").update({ order: temp }).eq("id", neighbor.id);
       await supabase.from("lessons").update({ order: neighbor.order }).eq("id", lesson.id);
       await supabase.from("lessons").update({ order: lesson.order }).eq("id", neighbor.id);
@@ -314,7 +292,6 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
-    // ---------- Questions ----------
     if (action === "create_question") {
       const { lesson_id, qtype, question, choices, correct_index, correct_bool, explanation, order_index } = payload;
 
@@ -344,8 +321,8 @@ if (!allowed.includes((user.email ?? "").toLowerCase())) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
-    return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "أمر غير معروف" }, { status: 400 });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Error" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e?.message ?? "حدث خطأ غير متوقع" }, { status: 500 });
   }
 }
