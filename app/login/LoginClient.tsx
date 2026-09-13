@@ -7,7 +7,6 @@ import Link from "next/link";
 
 export default function LoginClient() {
   const supabase = createClient();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const nextUrl = searchParams.get("next") || "/";
@@ -20,24 +19,48 @@ export default function LoginClient() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   async function signUp() {
+    if (!email || !password) {
+      setMsg("اكتب الإيميل وكلمة المرور أولاً.");
+      return;
+    }
     setMsg("...");
     const { error } = await supabase.auth.signUp({ email, password });
-    if (error) return setMsg(error.message);
-    setMsg("تم إنشاء الحساب ✅");
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    setMsg("تم إنشاء الحساب ✅، يمكنك الآن تسجيل الدخول.");
   }
 
   async function signIn() {
-    setMsg("...");
+    if (loading) return;
+
+    if (!email || !password) {
+      setMsg("اكتب الإيميل وكلمة المرور أولاً.");
+      return;
+    }
+
+    setLoading(true);
+    setMsg("جارٍ تسجيل الدخول...");
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return setMsg(error.message);
+
+    if (error) {
+      setMsg(error.message);
+      setLoading(false);
+      return;
+    }
 
     const isAdmin = adminEmails.includes(email.trim().toLowerCase());
+    const target = isAdmin ? "/admin" : nextUrl;
 
-    setMsg("تم تسجيل الدخول ✅");
-    router.push(isAdmin ? "/admin" : nextUrl);
-    router.refresh();
+    setMsg("تم تسجيل الدخول ✅، جاري التحويل...");
+
+    // ✅ السطر ده هو اللي بيحل مشكلة فيرسيل والـ Cookies مع السيرفر
+    window.location.href = target;
   }
 
   return (
@@ -64,8 +87,12 @@ export default function LoginClient() {
           onChange={(e) => setPassword(e.target.value)}
         />
 
-        <button onClick={signIn} className="rounded-xl bg-slate-900 text-white px-4 py-2">
-          دخول
+        <button
+          onClick={signIn}
+          disabled={loading}
+          className="rounded-xl bg-slate-900 text-white px-4 py-2 disabled:opacity-50"
+        >
+          {loading ? "جارٍ الدخول..." : "دخول"}
         </button>
 
         <button onClick={signUp} className="rounded-xl border bg-white px-4 py-2">
