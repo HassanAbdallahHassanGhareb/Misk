@@ -128,10 +128,7 @@ export default function DashboardPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6">
-      <div className="flex items-center justify-between">
-        <div className="font-extrabold text-lg">مِسك</div>
-        <AuthButton />
-      </div>
+
 
       <div className="mt-4 inline-flex rounded-2xl border border-slate-200 bg-white p-1">
         <button onClick={() => { setMode("grades"); localStorage.setItem("misk_mode2", "grades"); }} className={"rounded-2xl px-4 py-2 text-sm font-semibold " + (mode === "grades" ? "bg-slate-900 text-white" : "text-slate-700")}>
