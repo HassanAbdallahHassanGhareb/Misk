@@ -3,7 +3,6 @@ import { createClient as createUserClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
-  // 1. التحقق من أمان الجلسة وإيميل الأدمن
   const userClient = await createUserClient();
   const { data } = await userClient.auth.getUser();
   const user = data.user;
@@ -21,12 +20,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "عذرًا، هذا الإيميل ليس لديه صلاحيات أدمن" }, { status: 403 });
   }
 
-  // 2. تنفيذ الأوامر بحساب الأدمن
   const supabase = supabaseAdmin();
   const body = await req.json();
   const { action, payload } = body as { action: string; payload: any };
 
   try {
+    // ---------- GRADES ----------
     if (action === "upsert_grade") {
       const { slug, name, order_index } = payload;
       const { data, error } = await supabase
@@ -59,6 +58,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, data: { deleted: true, coursesDeleted: coursesDeleted ?? 0 } });
     }
 
+    // ---------- TRACKS ----------
     if (action === "upsert_track") {
       const { slug, name, description, order_index } = payload;
       const { data, error } = await supabase
@@ -94,6 +94,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, data: { deleted: true, coursesDeleted: coursesDeleted ?? 0 } });
     }
 
+    // ---------- COURSES ----------
     if (action === "create_course") {
       const { course_type, grade_slug, track_slug, title, subject } = payload;
       const row =
@@ -139,6 +140,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
+    // ---------- TERM BOOK ----------
     if (action === "set_term_book") {
       const { course_id, term, book_pdf_url } = payload;
       const { data, error } = await supabase
@@ -150,6 +152,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, data });
     }
 
+    // ---------- UNITS ----------
     if (action === "create_unit") {
       const { course_id, term, order, title } = payload;
       const { data, error } = await supabase
@@ -213,8 +216,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
+    // ---------- LESSONS ----------
     if (action === "create_lesson") {
-      const { unit_id, order, title, youtube_id, summary, key_points } = payload;
+      const { unit_id, order, title, youtube_id, summary, key_points, attachment_url } = payload;
 
       const { data, error } = await supabase
         .from("lessons")
@@ -225,8 +229,9 @@ export async function POST(req: Request) {
           youtube_id: youtube_id || null,
           summary: summary || "",
           key_points: Array.isArray(key_points) ? key_points : [],
+          attachment_url: attachment_url || null,
         })
-        .select("id, unit_id, order, title, youtube_id, summary, key_points")
+        .select("id, unit_id, order, title, youtube_id, summary, key_points, attachment_url")
         .single();
 
       if (error) throw error;
@@ -234,7 +239,7 @@ export async function POST(req: Request) {
     }
 
     if (action === "update_lesson") {
-      const { lesson_id, order, title, youtube_id, summary, key_points } = payload;
+      const { lesson_id, order, title, youtube_id, summary, key_points, attachment_url } = payload;
 
       const { data, error } = await supabase
         .from("lessons")
@@ -244,9 +249,10 @@ export async function POST(req: Request) {
           youtube_id: youtube_id || null,
           summary: summary || "",
           key_points: Array.isArray(key_points) ? key_points : [],
+          attachment_url: attachment_url || null,
         })
         .eq("id", lesson_id)
-        .select("id, unit_id, order, title, youtube_id, summary, key_points")
+        .select("id, unit_id, order, title, youtube_id, summary, key_points, attachment_url")
         .single();
 
       if (error) throw error;
@@ -292,6 +298,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, data: { deleted: true } });
     }
 
+    // ---------- QUESTIONS ----------
     if (action === "create_question") {
       const { lesson_id, qtype, question, choices, correct_index, correct_bool, explanation, order_index } = payload;
 
@@ -307,6 +314,29 @@ export async function POST(req: Request) {
           explanation: explanation || "",
           order_index: order_index ?? 1,
         })
+        .select("id, lesson_id, qtype, order_index")
+        .single();
+
+      if (error) throw error;
+      return NextResponse.json({ ok: true, data });
+    }
+
+    // 🆕 تعديل السؤال
+    if (action === "update_question") {
+      const { question_id, qtype, question, choices, correct_index, correct_bool, explanation, order_index } = payload;
+
+      const { data, error } = await supabase
+        .from("quiz_questions")
+        .update({
+          qtype,
+          question,
+          choices: qtype === "mcq" ? choices : null,
+          correct_index: qtype === "mcq" ? correct_index : null,
+          correct_bool: qtype === "tf" ? correct_bool : null,
+          explanation: explanation || "",
+          order_index: order_index ?? 1,
+        })
+        .eq("id", question_id)
         .select("id, lesson_id, qtype, order_index")
         .single();
 
